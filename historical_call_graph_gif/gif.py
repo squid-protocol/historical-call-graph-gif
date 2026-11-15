@@ -242,8 +242,12 @@ def render_frame(args) -> str:
     sx = 20 * T
     y = st.pad_top + 12 * T
     st_row = sc.stats[s]
-    stats = f"{ds.snaps[s].label}   |   {st_row['funcs']:,} functions   |   {st_row['calls']:,} calls   |   {st_row['roads']:,} roads (file to file)"
     avail = W - 2 * sx
+    parts = [ds.snaps[s].label, f"{st_row['funcs']:,} functions", f"{st_row['calls']:,} calls", f"{st_row['roads']:,} roads (file to file)"]
+    for n_parts in (4, 3, 2):            # drop the least important figures before shrinking the text on a narrow frame
+        stats = "   |   ".join(parts[:n_parts])
+        if len(stats) * 0.60 / PT_PER_PX * (16 * T * 0.85) <= avail or n_parts == 2:     # width at 85% of full size
+            break
     ov.text(sx, y, title, color="#f2f5fb", fontsize=_fit_pt(title, 25 * T, avail, 10), va="top", weight="bold")
     y += 36 * T
     ov.text(sx, y, stats, color="#c4cde0", fontsize=_fit_pt(stats, 16 * T, avail, 8), va="top")
@@ -300,7 +304,7 @@ def _ffmpeg_mp4(ff, pat, dst, st: Style, fps_in: float) -> None:
     if st.hold > 0:                       # pad first: after the blend filter the padding is silently dropped
         chain.append(f"tpad=stop_mode=clone:stop_duration={st.hold}")
     if st.smooth and fps_in < st.out_fps:
-        chain.append(f"framerate=fps={st.out_fps}:interp_start=0:interp_end=255:scene=100")   # dissolve between frames
+        chain.append(f"framerate=fps={st.out_fps}:interp_start=64:interp_end=192:scene=100")   # quick dissolve between frames (a long one would double-expose the captions)
     else:
         chain.append(f"fps={st.out_fps}")
     chain.append("format=yuv420p")
