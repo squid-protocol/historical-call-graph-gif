@@ -56,7 +56,7 @@ Other options: `--ref main`, `--until`, `--formats html` (skip the GIF), `--jobs
 Already have a multi-commit GitGalaxy database (one `repo_data` row per commit)?
 
 ```bash
-historical-call-graph-gif from-db path/to/master.db --repo curl -n 24
+historical-call-graph-gif from-db path/to/master.db --repo curl
 ```
 
 ## The interactive page
