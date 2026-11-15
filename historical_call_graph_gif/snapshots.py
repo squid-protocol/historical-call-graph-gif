@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Pick N snapshots of a repository's history and extract them read-only.
 
 Nothing here touches the user's working tree or branches: commits are listed

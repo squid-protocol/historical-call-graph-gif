@@ -1,4 +1,4 @@
-# repo-roads
+# historical-call-graph-gif
 
 Turn a git repository's history into a road map of its call network:
 
@@ -16,16 +16,16 @@ being built, widened and rebuilt.
 ## Install
 
 ```bash
-pip install repo-roads gitgalaxy      # gitgalaxy provides the scanner, 'galaxyscope'
+pip install historical-call-graph-gif gitgalaxy      # gitgalaxy provides the scanner, 'galaxyscope'
 ```
 
-`ffmpeg` is optional (needed for MP4 and for the best-quality GIF; without it you still get a GIF and the HTML page).
+The short command `hcg-gif` is an alias for `historical-call-graph-gif`. `ffmpeg` is optional (needed for MP4 and for the best-quality GIF; without it you still get a GIF and the HTML page).
 
 ## Use
 
 ```bash
-repo-roads make path/to/your/repo -n 24 -o roads-out     # or a clone URL
-repo-roads serve roads-out                               # http://127.0.0.1:8765/
+historical-call-graph-gif make path/to/your/repo -n 24 -o roads-out     # or a clone URL
+historical-call-graph-gif serve roads-out                               # http://127.0.0.1:8765/
 ```
 
 `make` picks 24 snapshots evenly spaced in time across the first-parent history, extracts each with `git archive`
@@ -39,7 +39,7 @@ Useful options: `--ref main`, `--since 2022-01-01`, `--formats html` (skip the G
 Already have a multi-commit GitGalaxy database (one `repo_data` row per commit)?
 
 ```bash
-repo-roads from-db path/to/master.db --repo curl -n 24
+historical-call-graph-gif from-db path/to/master.db --repo curl -n 24
 ```
 
 ## The interactive page
@@ -50,7 +50,7 @@ repo-roads from-db path/to/master.db --repo curl -n 24
   scores. Its callers are drawn in white and its callees in blue.
 * **Click a file** for its largest functions and risk scores. **Search** a function by name (Enter).
 * Wheel to zoom, drag to pan, double-click to reset. Link straight to a view with `page.html#t=12&f=345`.
-* Self-hosting: `repo-roads serve` is a plain static server (`--host 0.0.0.0` to share on your network). The HTML
+* Self-hosting: `historical-call-graph-gif serve` is a plain static server (`--host 0.0.0.0` to share on your network). The HTML
   file also works opened directly from disk or dropped on any static host.
 
 Metrics in the panel are from the last snapshot the function appeared in.
@@ -74,5 +74,9 @@ histories keep the busiest files (`--max-files`). Scan time is GalaxyScope's, pe
 
 ## Licence
 
-Not yet chosen. GalaxyScope itself is licensed separately (PolyForm Noncommercial for the community tier); scanning
-with it is subject to those terms.
+This tool is licensed under the [Apache License 2.0](LICENSE).
+
+It runs the GitGalaxy scanner (`galaxyscope`) as a separate program and does not include or link to any GitGalaxy
+code. **The scanner is licensed separately** (PolyForm Noncommercial 1.0.0 for the community tier), and scanning
+with it is subject to those terms: using this tool commercially means holding a commercial GitGalaxy licence key.
+The optional `ffmpeg` is likewise a separate program under its own licence.

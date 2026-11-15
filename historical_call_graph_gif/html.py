@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Self-contained interactive viewer: one HTML file, no network, no build step."""
 from __future__ import annotations
 

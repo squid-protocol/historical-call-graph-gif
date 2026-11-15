@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Everything a renderer needs: dots, roads (per-snapshot call counts), captions."""
 from __future__ import annotations
 

@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 import json
 import re
 import subprocess
@@ -6,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from repo_roads import collect, html, layout, scene, snapshots
+from historical_call_graph_gif import collect, html, layout, scene, snapshots
 
 
 def make_dataset(n_snaps=4):
@@ -132,5 +134,5 @@ def test_pick_snapshots_even_in_time(tmp_path):
 
 
 def test_cli_serve_missing_dir_returns_error(tmp_path):
-    from repo_roads import cli
+    from historical_call_graph_gif import cli
     assert cli.main(["serve", str(tmp_path / "nope")]) == 2

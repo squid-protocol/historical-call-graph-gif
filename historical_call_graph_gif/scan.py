@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Run the GitGalaxy scanner (``galaxyscope``) once per snapshot."""
 from __future__ import annotations
 

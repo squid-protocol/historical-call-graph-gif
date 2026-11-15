@@ -3,10 +3,12 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "repo-roads"
+name = "historical-call-graph-gif"
 version = "0.1.0"
 description = "Turn a git repository's history into an animated road map of its call network (GIF, MP4 and a self-hosted interactive page), powered by GitGalaxy."
 readme = "README.md"
+license = {text = "Apache-2.0"}
+classifiers = ["License :: OSI Approved :: Apache Software License", "Programming Language :: Python :: 3", "Topic :: Software Development :: Version Control :: Git"]
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.23", "scipy>=1.9", "matplotlib>=3.5", "pillow>=9.0"]
 
@@ -15,10 +17,11 @@ engine = ["gitgalaxy"]
 dev = ["pytest"]
 
 [project.scripts]
-repo-roads = "repo_roads.cli:main"
+historical-call-graph-gif = "historical_call_graph_gif.cli:main"
+hcg-gif = "historical_call_graph_gif.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["repo_roads*"]
+include = ["historical_call_graph_gif*"]
 
 [tool.setuptools.package-data]
-repo_roads = ["web/*"]
+historical_call_graph_gif = ["web/*"]

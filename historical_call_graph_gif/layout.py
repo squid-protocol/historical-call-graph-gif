@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Fixed layout for a whole history: file circles, function dots, road network.
 
 One layout is computed for every function that ever existed, so nothing moves

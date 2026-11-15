@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """GIF / MP4 renderer (matplotlib frames, assembled with ffmpeg when present)."""
 from __future__ import annotations
 
@@ -181,7 +183,7 @@ def render(sc: Scene, out_dir: Path, name: str = "roads", title: str | None = No
     _S = sc
     _CACHE.clear()
     title = title or f"Roads of {sc.ds.title}"
-    tmp = Path(tempfile.mkdtemp(prefix="repo_roads_frames_"))
+    tmp = Path(tempfile.mkdtemp(prefix="historical_call_graph_gif_frames_"))
     jobs_list, k = [], 0
     for s in range(sc.n):
         for u in range(sub):

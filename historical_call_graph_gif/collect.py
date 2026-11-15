@@ -1,3 +1,5 @@
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
 """Read GitGalaxy scan databases into one history-wide ``Dataset``.
 
 A function is identified across snapshots by (file path, name, nth same-name
@@ -146,7 +148,7 @@ def _fold_files(ds: Dataset, info: dict) -> None:
 
 
 def from_snapshot_dbs(title: str, picks, dbs: list[Path]) -> Dataset:
-    """Per-snapshot databases (what ``repo-roads make`` produces)."""
+    """Per-snapshot databases (what ``historical-call-graph-gif make`` produces)."""
     ds = Dataset(title, [Snapshot(p.label, p.date, p.commit) for p in picks])
     for s, db in enumerate(dbs):
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)

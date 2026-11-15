@@ -1,4 +1,6 @@
-"""repo-roads command line."""
+# Copyright 2026 Joe Esquibel
+# SPDX-License-Identifier: Apache-2.0
+"""historical-call-graph-gif command line."""
 from __future__ import annotations
 
 import argparse
@@ -38,7 +40,7 @@ def _build_outputs(ds, args, out: Path, name: str) -> None:
     for p in made:
         _say(f"  wrote {p}  ({p.stat().st_size / 1e6:.1f} MB)")
     if any(p.suffix == ".html" for p in made):
-        _say(f"\nopen it:  repo-roads serve {out}     (or open the .html file directly in a browser)")
+        _say(f"\nopen it:  historical-call-graph-gif serve {out}     (or open the .html file directly in a browser)")
 
 
 def cmd_make(args) -> int:
@@ -113,8 +115,8 @@ def _common(p: argparse.ArgumentParser) -> None:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="repo-roads", description="Animated road map of a repository's call network.")
-    ap.add_argument("--version", action="version", version=f"repo-roads {__version__}")
+    ap = argparse.ArgumentParser(prog="historical-call-graph-gif", description="Animated road map of a repository's call network.")
+    ap.add_argument("--version", action="version", version=f"historical-call-graph-gif {__version__}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("make", help="scan N snapshots of a git repo and build the outputs")
     m.add_argument("repo", help="path to a local git repository, or a clone URL")
