@@ -4,3 +4,4 @@ out/
 .work/
 .venv/
 *.db
+dist/
