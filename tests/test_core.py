@@ -356,7 +356,9 @@ def test_presets_and_aliases():
     assert (style.resolve("square").width, style.resolve("square").height) == (1080, 1080)
     sh = style.resolve("shorts")
     assert (sh.width, sh.height) == (1080, 1920) and sh.formats == "mp4" and sh.duration == 45 and sh.text_scale > 1
-    assert sh.pad_bottom >= 300 and sh.pad_top > 0                     # keeps text clear of the app's own interface
+    assert sh.pad_bottom >= 300 and sh.pad_top > 100                   # keeps text clear of the app's own interface
+    custom = style.resolve("shorts", pad_top=50, pad_bottom=100)
+    assert (custom.pad_top, custom.pad_bottom) == (50, 100)            # --safe-top / --safe-bottom override the preset
     for alias in ("phone", "vertical", "reels", "tiktok", "story"):
         assert style.resolve(alias).preset == "shorts"
     assert style.resolve("shorts").suffix == "-shorts" and style.resolve("default").suffix == ""

@@ -48,12 +48,14 @@ historical-call-graph-gif make repo --size 1280x720 --formats gif          # any
 | `landscape` (`youtube`, `wide`) | 1920x1080 | gif, mp4, html | 16:9 |
 | `square` | 1080x1080 | gif, mp4, html | |
 | `portrait` (`instagram`) | 1080x1350 | gif, mp4, html | 4:5 |
-| `shorts` (`phone`, `vertical`, `reels`, `tiktok`, `story`) | 1080x1920 | mp4 | 9:16, 45 s, 1.45x text, safe margins |
+| `shorts` (`phone`, `vertical`, `reels`, `tiktok`, `story`) | 1080x1920 | mp4 | 9:16, 45 s, 1.45x text, safe margins (170 / 420 px) |
 
 Outputs get the preset as a suffix (`repo-shorts.mp4`), so one run directory can hold several shapes.
-The `shorts` preset keeps the title inside the top safe area and the captions above the bottom fifth of the screen,
-where YouTube, Instagram and TikTok draw their own buttons and description. YouTube accepts vertical videos up to
-3 minutes as Shorts. Upload the MP4 as is.
+The `shorts` preset keeps the title below the top bar and the captions above the bottom fifth of the screen, where
+YouTube, Instagram and TikTok draw their own buttons and description. Published safe-area figures disagree, so the
+margins (170 px top, 420 px bottom) are a middle course: tune them with `--safe-top` and `--safe-bottom`. At the time
+of writing YouTube accepts vertical 9:16 videos of up to 3 minutes as Shorts (check YouTube's current rules). Upload the
+MP4 as is.
 
 **Titles and text:** `--title`, `--subtitle` (replaces the one-line explanation), `--credit "@handle"` (bottom
 right), `--no-captions`, `--no-legend`, `--text-scale 1.2`.

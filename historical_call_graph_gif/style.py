@@ -13,8 +13,9 @@ PRESETS = {
     "square":    dict(size=(1080, 1080), pad_top=0, pad_bottom=0, formats="gif,mp4,html", duration=None),
     "portrait":  dict(size=(1080, 1350), pad_top=0, pad_bottom=0, formats="gif,mp4,html", duration=None),
     # 9:16 for phones: YouTube Shorts, Reels, TikTok. The app draws its own buttons and caption over the
-    # bottom fifth and the top bar, so titles and captions stay inside the safe area.
-    "shorts":    dict(size=(1080, 1920), pad_top=120, pad_bottom=340, formats="mp4", duration=45.0, text_scale=1.45),
+    # bottom and the top bar. Published safe-area figures disagree (top 6-15%, bottom 18-35%); these margins
+    # (9% and 22%) are a middle course, adjustable with --safe-top / --safe-bottom.
+    "shorts":    dict(size=(1080, 1920), pad_top=170, pad_bottom=420, formats="mp4", duration=45.0, text_scale=1.45),
 }
 ALIASES = {"phone": "shorts", "vertical": "shorts", "reels": "shorts", "tiktok": "shorts", "story": "shorts",
            "youtube": "landscape", "wide": "landscape", "instagram": "portrait"}

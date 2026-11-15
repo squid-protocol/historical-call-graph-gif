@@ -27,7 +27,7 @@ def _make_style(args):
             preset=args.preset, size=args.size, title=args.title, subtitle=args.subtitle, credit=args.credit,
             show_legend=not args.no_legend, show_captions=not args.no_captions, fit=args.fit, zoom=args.zoom,
             focus=args.focus, quality=args.quality, fps=args.fps, duration=args.duration, hold=args.hold,
-            frames_per_snapshot=args.frames_per_snapshot, smooth=not args.no_smooth, gif_width=args.gif_width,
+            frames_per_snapshot=args.frames_per_snapshot, pad_top=args.safe_top, pad_bottom=args.safe_bottom, smooth=not args.no_smooth, gif_width=args.gif_width,
             text_scale=args.text_scale, formats=args.formats)
     except ValueError as e:
         raise RuntimeError(str(e)) from None
@@ -156,6 +156,8 @@ def _common(p: argparse.ArgumentParser) -> None:
     v = p.add_argument_group("framing")
     v.add_argument("--fit", choices=["contain", "fill"], default="contain", help="contain: whole map visible (default); fill: crop to fill the frame")
     v.add_argument("--zoom", type=float, default=1.0, help="zoom in (>1) or out (<1) from the fitted view")
+    v.add_argument("--safe-top", type=int, metavar="PX", help="keep text this many pixels from the top edge (the shorts preset uses 170)")
+    v.add_argument("--safe-bottom", type=int, metavar="PX", help="keep captions this many pixels from the bottom edge (the shorts preset uses 420)")
     v.add_argument("--focus", metavar="PATH", help="frame one folder or file prefix, e.g. lib/ or src/network")
     m_ = p.add_argument_group("timing")
     m_.add_argument("--duration", type=float, help="seconds of animation (the shorts preset uses 45)")
