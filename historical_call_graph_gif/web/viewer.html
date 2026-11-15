@@ -68,6 +68,7 @@ body.pan #caption{left:calc((100% - 360px)/2);max-width:calc(100% - 392px)}
   <div>road width = calls merged</div>
   <div><span class="dot" style="background:var(--lime)"></span>born &nbsp; <span class="dot" style="background:var(--amber)"></span>died</div>
   <div>click a function or file &middot; wheel to zoom</div>
+  <div id="dropnote" class="note" style="display:none;color:#ffb000"></div>
 </div>
 <div id="caption"></div>
 <aside id="panel" aria-live="polite"><button id="x" aria-label="Close">&times;</button><div id="pbody"></div></aside>
@@ -254,6 +255,7 @@ $("q").addEventListener("keydown",e=>{if(e.key!=="Enter")return;const q=e.target
 
 /* ---------- boot ---------- */
 $("title").textContent=D.meta.title;
+if(D.meta.dropped_files>0){const n=$("dropnote");n.style.display="block";n.textContent=`${D.meta.dropped_files.toLocaleString()} small files (${(D.meta.dropped_funcs||0).toLocaleString()} functions) are not drawn`;}
 window.addEventListener("resize",resize);resize();
 (function(){const h=new URLSearchParams(location.hash.slice(1));if(h.has("t"))T=Math.min(N-1,Math.max(0,parseFloat(h.get("t"))||0));
   draw();if(h.has("f")&&FN[+h.get("f")])selectFunc(+h.get("f"));})();

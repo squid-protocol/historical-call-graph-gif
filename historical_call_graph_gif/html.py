@@ -60,7 +60,7 @@ def scene_to_dict(sc: Scene) -> dict:
         groups.setdefault(dir_of(p), []).append(i)
     dirs = [{"d": d, "x": _r(lay.file_xy[fs][:, 0].mean()), "y": _r(lay.file_xy[fs][:, 1].mean()), "f": fs} for d, fs in groups.items()]
     return {
-        "meta": {"title": ds.title, "ext": _r(lay.extent), "dropped_files": lay.dropped_files,
+        "meta": {"title": ds.title, "ext": _r(lay.extent), "dropped_files": lay.dropped_files, "dropped_funcs": lay.dropped_funcs,
                  "snaps": [{"label": s.label, "date": s.date, "commit": s.commit[:10], **sc.stats[k]} for k, s in enumerate(ds.snaps)],
                  "caps": sc.captions},
         "files": files, "funcs": funcs, "edges": edges, "roads": roads, "dirs": dirs,

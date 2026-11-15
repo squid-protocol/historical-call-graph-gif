@@ -34,7 +34,7 @@ historical-call-graph-gif serve roads-out                               # http:/
 
 Useful options: `--ref main`, `--since 2022-01-01`, `--formats html` (skip the GIF), `--jobs 4`, `--history`
 (let GitGalaxy read git history too; slower, adds churn and stability to the file risk scores),
-`--keep-scans` (keep the per-snapshot databases), `--max-files 1500`.
+`--keep-scans` (keep the per-snapshot databases), `--max-files 4000`.
 
 Already have a multi-commit GitGalaxy database (one `repo_data` row per commit)?
 
@@ -69,8 +69,9 @@ Metrics in the panel are from the last snapshot the function appeared in.
 
 ## Limits
 
-Built and tested up to roughly 1,500 files and 13,000 functions per history (the curl repository); larger
-histories keep the busiest files (`--max-files`). Scan time is GalaxyScope's, per snapshot.
+Tested on C, C++, Java, Python, Go, Rust, Zig, TypeScript, Ruby, PHP, Perl, MATLAB, Fortran and Scheme
+repositories, up to about 100,000 functions (OpenCV). Histories with more than `--max-files` files keep the files
+with the most functions and say how many are not drawn. Scan time is GalaxyScope's, per snapshot.
 
 ## Licence
 

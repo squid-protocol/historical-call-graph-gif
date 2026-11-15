@@ -32,9 +32,11 @@ def pack(radii, gap: float = 0.0):
     """Greedy spiral circle packing. Returns centres (n, 2) and the enclosing radius."""
     n = len(radii)
     R = np.asarray(radii, float) + gap
-    P = np.zeros((n, 2))
     if n == 0:
-        return P, 0.0
+        return np.zeros((0, 2)), 0.0
+    if n > FAST_PACK_MIN:
+        return _pack_fast(R)
+    P = np.zeros((n, 2))
     order = np.argsort(-R, kind="stable")
     placed = [int(order[0])]
     for i in order[1:]:
@@ -57,6 +59,63 @@ def pack(radii, gap: float = 0.0):
     return P, float((np.hypot(*P.T) + R).max())
 
 
+FAST_PACK_MIN = 60      # files with more functions than this use the grid-accelerated packer
+
+
+def _pack_fast(R):
+    """Same idea as ``pack`` for big groups: a spatial grid for collision checks, and the spiral
+    starts near the current edge instead of the centre (the interior is already full)."""
+    n = len(R)
+    P = np.zeros((n, 2))
+    cell = 2.0 * float(R.max())
+    grid: dict = {}
+    order = np.argsort(-R, kind="stable")
+    sw = sx = sy = 0.0
+    enc = 0.0
+    placed = 0
+    for i in order:
+        r = float(R[i])
+        if placed == 0:
+            P[i] = (0.0, 0.0)
+        else:
+            cx, cy = sx / sw, sy / sw
+            step = max(r * 0.35, 0.3)
+            rad = max(0.0, enc * 0.55 - r)
+            ang = 0.0
+            while True:
+                x, y = cx + rad * math.cos(ang), cy + rad * math.sin(ang)
+                gx, gy = int(math.floor(x / cell)), int(math.floor(y / cell))
+                ok = True
+                for ax in (gx - 1, gx, gx + 1):
+                    for ay in (gy - 1, gy, gy + 1):
+                        for j in grid.get((ax, ay), ()):
+                            dx, dy = P[j, 0] - x, P[j, 1] - y
+                            lim = R[j] + r - 1e-9
+                            if dx * dx + dy * dy < lim * lim:
+                                ok = False
+                                break
+                        if not ok:
+                            break
+                    if not ok:
+                        break
+                if ok:
+                    break
+                ang += step / max(rad, step)
+                rad += step * 0.5 / (2 * math.pi)
+            P[i] = (x, y)
+        gx, gy = int(math.floor(P[i, 0] / cell)), int(math.floor(P[i, 1] / cell))
+        grid.setdefault((gx, gy), []).append(int(i))
+        w = r * r
+        sw += w
+        sx += w * P[i, 0]
+        sy += w * P[i, 1]
+        enc = max(enc, math.hypot(P[i, 0] - 0.0, P[i, 1] - 0.0) + r)
+        placed += 1
+    w = R ** 2
+    P -= (P * w[:, None]).sum(0) / w.sum()
+    return P, float((np.hypot(*P.T) + R).max())
+
+
 @dataclass
 class Layout:
     files: list                 # file paths (index = file id)
@@ -70,9 +129,10 @@ class Layout:
     road_graph: tuple           # (dist, pred) over anchors
     file_anchor: np.ndarray     # file id -> local anchor id
     dropped_files: int = 0
+    dropped_funcs: int = 0
 
 
-def build(ds: Dataset, max_files: int = 1500, seed: int = 1, iterations: int = 450) -> Layout:
+def build(ds: Dataset, max_files: int = 4000, seed: int = 1, iterations: int = 450) -> Layout:
     rng = np.random.default_rng(seed)
     # ---- files that ever held a function; keep the busiest if there are too many
     per_file = defaultdict(list)
@@ -80,6 +140,7 @@ def build(ds: Dataset, max_files: int = 1500, seed: int = 1, iterations: int = 4
         per_file[f.path].append(i)
     paths = sorted(per_file, key=lambda p: (-len(per_file[p]), p))
     dropped = max(0, len(paths) - max_files)
+    dropped_funcs = sum(len(per_file[p]) for p in paths[max_files:])
     paths = sorted(paths[:max_files])
     fid = {p: i for i, p in enumerate(paths)}
     nF, nfun = len(paths), len(ds.funcs)
@@ -133,39 +194,59 @@ def build(ds: Dataset, max_files: int = 1500, seed: int = 1, iterations: int = 4
     ei = np.array([k[0] for k in W], int)
     ej = np.array([k[1] for k in W], int)
     ew = np.array([math.log1p(v) for v in W.values()], float)
-    dir_idx = np.array([list(dirs).index(dir_of(p)) for p in paths]) if nF else np.zeros(0, int)
+    dir_pos = {d: k for k, d in enumerate(dirs)}
+    dir_idx = np.array([dir_pos[dir_of(p)] for p in paths], int) if nF else np.zeros(0, int)
+    dir_n = np.bincount(dir_idx, minlength=len(dirs)).astype(float) if nF else np.zeros(0)
     deg = np.bincount(np.r_[ei, ej], weights=np.r_[ew, ew], minlength=nF) if len(ei) else np.zeros(nF)
+    rmax = float(file_r.max()) if nF else 0.0
+
+    def near_pairs(P, slack):
+        """Candidate overlapping pairs (i < j) from a k-d tree: O(n log n) instead of all n^2 pairs."""
+        from scipy.spatial import cKDTree
+        tree = cKDTree(P)
+        nb = tree.query_ball_point(P, r=(file_r + rmax + 2.0) * 1.25 + slack)
+        ii = np.concatenate([np.full(len(v), k, int) for k, v in enumerate(nb)]) if len(nb) else np.zeros(0, int)
+        jj = np.concatenate([np.asarray(v, int) for v in nb]) if len(nb) else np.zeros(0, int)
+        keep = ii < jj
+        return ii[keep], jj[keep]
 
     P = P0 * 0.6 + rng.normal(0, 2, P0.shape)
+    pi = pj = None
     for it in range(iterations if nF > 1 else 0):
         T = 1.0 - it / iterations
-        dlt = P[:, None, :] - P[None, :, :]
-        dist = np.sqrt((dlt ** 2).sum(-1)) + 1e-6
-        gap = file_r[:, None] + file_r[None, :] + 2.0
-        rep = np.where(dist < gap * 1.25, (gap * 1.25 - dist) * 0.8, 0.0)
-        np.fill_diagonal(rep, 0)
-        Fv = (dlt / dist[..., None] * rep[..., None]).sum(1)
+        if it % 5 == 0:
+            pi, pj = near_pairs(P, slack=25.0)
+        Fv = np.zeros_like(P)
+        d = P[pi] - P[pj]
+        dist = np.sqrt((d ** 2).sum(1)) + 1e-6
+        gap = (file_r[pi] + file_r[pj] + 2.0) * 1.25
+        mag = np.where(dist < gap, (gap - dist) * 0.8, 0.0)
+        f = d / dist[:, None] * mag[:, None]
+        np.add.at(Fv, pi, f)
+        np.add.at(Fv, pj, -f)
         if len(ei):
             d = P[ej] - P[ei]
             l = np.sqrt((d ** 2).sum(1)) + 1e-6
             f = (d / l[:, None]) * (0.045 * ew * np.maximum(l - (file_r[ei] + file_r[ej]), 0))[:, None]
             np.add.at(Fv, ei, f)
             np.add.at(Fv, ej, -f)
-        for k in range(len(dirs)):
-            m = dir_idx == k
-            if m.sum() > 1:
-                Fv[m] += (P[m].mean(0) - P[m]) * 0.03
+        cen = np.stack([np.bincount(dir_idx, weights=P[:, 0], minlength=len(dirs)),
+                        np.bincount(dir_idx, weights=P[:, 1], minlength=len(dirs))], 1) / np.maximum(dir_n, 1)[:, None]
+        Fv += np.where((dir_n[dir_idx] > 1)[:, None], (cen[dir_idx] - P) * 0.03, 0.0)   # folders loosely cohere
         Fv += -P * (0.02 + 0.002 * deg[:, None])
         P += np.clip(Fv, -8, 8) * (0.6 * T + 0.05)
-    for _ in range(400 if nF > 1 else 0):          # final overlap resolution
-        dlt = P[:, None, :] - P[None, :, :]
-        dist = np.sqrt((dlt ** 2).sum(-1)) + 1e-6
-        gap = file_r[:, None] + file_r[None, :] + 1.0
-        ov = np.where(dist < gap, (gap - dist) / 2, 0)
-        np.fill_diagonal(ov, 0)
-        if ov.max() < 0.05:
+    for k in range(400 if nF > 1 else 0):          # final overlap resolution
+        if k % 5 == 0:
+            pi, pj = near_pairs(P, slack=6.0)
+        d = P[pi] - P[pj]
+        dist = np.sqrt((d ** 2).sum(1)) + 1e-6
+        gap = file_r[pi] + file_r[pj] + 1.0
+        ov = np.where(dist < gap, (gap - dist) / 2, 0.0)
+        if ov.max() < 0.05 and k % 5 == 4:
             break
-        P += (dlt / dist[..., None] * ov[..., None]).sum(1) * 0.5
+        f = d / dist[:, None] * ov[:, None]
+        np.add.at(P, pi, f * 0.5)
+        np.add.at(P, pj, -f * 0.5)
     if nF:
         P -= P.mean(0)
     func_xy = np.zeros((nfun, 2))
@@ -174,7 +255,7 @@ def build(ds: Dataset, max_files: int = 1500, seed: int = 1, iterations: int = 4
     extent = float((np.hypot(*P.T) + file_r).max() + 5) if nF else 10.0
 
     anchors, graph, file_anchor = _road_network(P, file_r, W, nF)
-    return Layout(paths, P, file_r, func_file, func_xy, func_r, extent, anchors, graph, file_anchor, dropped)
+    return Layout(paths, P, file_r, func_file, func_xy, func_r, extent, anchors, graph, file_anchor, dropped, dropped_funcs)
 
 
 def _road_network(P, file_r, W, nF):

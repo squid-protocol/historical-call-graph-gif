@@ -172,7 +172,10 @@ def render_frame(args) -> str:
                     ax.add_patch(plt.Circle(fx[f], fr[f] + 1.2, fill=False, ec=_rgba("#ffffff", 0.3 + 0.6 * fa), lw=1.0 + 1.6 * fa, zorder=6))
     ax.text(0.5, 0.075, "\n".join(textwrap.wrap(sc.captions[s], 78)), color="#ffffff", fontsize=14, ha="center", va="top",
             linespacing=1.25, weight="bold", transform=T, path_effects=out)
-    ax.text(0.02, 0.008, "A file that moves shows as a death plus a birth.", color="#7f8aa3", fontsize=9.5, va="bottom", transform=T)
+    foot = "A file that moves shows as a death plus a birth."
+    if lay.dropped_files:
+        foot += f"   Not drawn: {lay.dropped_files:,} small files ({lay.dropped_funcs:,} functions)."
+    ax.text(0.02, 0.008, foot, color="#7f8aa3", fontsize=9.5, va="bottom", transform=T)
     fig.savefig(path, facecolor=BG)
     return path
 

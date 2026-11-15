@@ -26,7 +26,7 @@ def _build_outputs(ds, args, out: Path, name: str) -> None:
     _say(f"laying out {len(ds.funcs):,} functions ...")
     lay = layout.build(ds, max_files=args.max_files)
     if lay.dropped_files:
-        _say(f"  note: {lay.dropped_files} small files left out (limit --max-files {args.max_files})")
+        _say(f"  note: {lay.dropped_files} files ({lay.dropped_funcs:,} functions) are not drawn (limit --max-files {args.max_files}); raise it to draw more")
     sc = scene.build_scene(ds, lay)
     _say(f"  {len(sc.roads):,} roads over {sc.n} snapshots")
     formats = {f.strip() for f in args.formats.split(",") if f.strip()}
@@ -65,8 +65,8 @@ def cmd_make(args) -> int:
         return 2
     picks = snapshots.pick_snapshots(repo, args.snapshots, ref=args.ref, since=args.since, until=args.until)
     _say(f"{title}: {len(picks)} snapshots, {picks[0].label} to {picks[-1].label}")
-    dbs = scan.scan_all(repo, picks, work, jobs=args.jobs, history=args.history, progress=_say)
-    ds = collect.from_snapshot_dbs(title, picks, dbs)
+    picks, dbs = scan.scan_all(repo, picks, work, jobs=args.jobs, history=args.history, progress=_say)
+    ds = collect.drop_leading_empty(collect.from_snapshot_dbs(title, picks, dbs))
     _build_outputs(ds, args, out, args.basename or title)
     if not args.keep_scans:
         shutil.rmtree(work, ignore_errors=True)
@@ -77,7 +77,7 @@ def cmd_make(args) -> int:
 def cmd_from_db(args) -> int:
     from . import collect
     commits = collect.master_db_commits(Path(args.db), args.snapshots, args.repo)
-    ds = collect.from_master_db(args.name or args.repo or Path(args.db).stem, Path(args.db), commits)
+    ds = collect.drop_leading_empty(collect.from_master_db(args.name or args.repo or Path(args.db).stem, Path(args.db), commits))
     out = Path(args.out).resolve()
     _build_outputs(ds, args, out, args.basename or ds.title)
     return 0
@@ -111,7 +111,7 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--title", help="title text drawn on the GIF/MP4 (default 'Roads of <name>')")
     p.add_argument("--fps", type=float, default=6.0, help="GIF/MP4 frames per second (default 6)")
     p.add_argument("--jobs", type=int, default=max(1, min(4, (os.cpu_count() or 2) // 2)), help="parallel workers")
-    p.add_argument("--max-files", type=int, default=1500, help="most files drawn; busiest kept (default 1500)")
+    p.add_argument("--max-files", type=int, default=4000, help="most files drawn; files with the most functions are kept (default 4000)")
 
 
 def main(argv=None) -> int:

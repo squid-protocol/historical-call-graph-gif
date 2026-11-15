@@ -45,15 +45,25 @@ def scan_snapshot(repo: Path, pick: Pick, idx: int, work: Path, scanner: str, hi
 
 
 def scan_all(repo: Path, picks: list[Pick], work: Path, jobs: int = 3, history: bool = False,
-             progress=print) -> list[Path]:
+             progress=print) -> tuple[list[Pick], list[Path]]:
+    """Scan every snapshot; a snapshot that fails is skipped with a warning, not fatal.
+
+    Returns the picks that were scanned and their databases, in order.
+    """
     scanner = find_scanner()
     work.mkdir(parents=True, exist_ok=True)
     dbs: list[Path | None] = [None] * len(picks)
 
     def one(i: int) -> None:
-        dbs[i] = scan_snapshot(repo, picks[i], i, work, scanner, history)
-        progress(f"  scanned {i + 1}/{len(picks)}  {picks[i].label}  {picks[i].commit[:10]}")
+        try:
+            dbs[i] = scan_snapshot(repo, picks[i], i, work, scanner, history)
+            progress(f"  scanned {i + 1}/{len(picks)}  {picks[i].label}  {picks[i].commit[:10]}")
+        except RuntimeError as e:
+            progress(f"  skipped {i + 1}/{len(picks)}  {picks[i].label}  {picks[i].commit[:10]}: {str(e).splitlines()[0]}")
 
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
         list(ex.map(one, range(len(picks))))
-    return [d for d in dbs if d is not None]
+    ok = [(p, d) for p, d in zip(picks, dbs) if d is not None]
+    if not ok:
+        raise RuntimeError("no snapshot could be scanned")
+    return [p for p, _ in ok], [d for _, d in ok]

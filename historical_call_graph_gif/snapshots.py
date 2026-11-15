@@ -8,8 +8,9 @@ with ``git log`` and extracted with ``git archive`` into a scratch directory.
 from __future__ import annotations
 
 import subprocess
-import tarfile
 import io
+import tarfile
+from pathlib import PurePosixPath
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,14 +29,27 @@ def _git(repo: Path, *args: str) -> str:
     return res.stdout
 
 
+def tree_is_empty(repo: Path, commit: str) -> bool:
+    """True when ``commit`` has no files (some imported histories start with an empty commit)."""
+    return not _git(repo, "ls-tree", "-r", "--name-only", "-z", commit).strip("\0")
+
+
 def list_commits(repo: Path, ref: str = "HEAD") -> list[tuple[int, str]]:
-    """(unix time, sha) of the first-parent history of ``ref``, oldest first."""
+    """(unix time, sha) of the first-parent history of ``ref``, oldest first.
+
+    Kept in git's own order (not re-sorted by time): commits that share a timestamp, such as a root
+    commit and its first child in an imported history, must stay in parent-to-child order.
+    Times are made non-decreasing so that picking evenly in time is well defined.
+    """
     out = _git(repo, "log", "--first-parent", "--format=%ct %H", ref)
     rows = []
-    for line in out.splitlines():
+    for line in reversed(out.splitlines()):
         t, sha = line.split()
         rows.append((int(t), sha))
-    rows.sort()
+    run = 0
+    for i, (t, sha) in enumerate(rows):
+        run = max(run, t)
+        rows[i] = (run, sha)
     return rows
 
 
@@ -54,6 +68,10 @@ def pick_snapshots(repo: Path, n: int, ref: str = "HEAD", since: str | None = No
         commits = [c for c in commits if c[0] <= int(_git(repo, "log", "-1", "--format=%ct", f"--until={until}", ref).strip() or 10**12)] or commits
     if not commits:
         raise RuntimeError("no commits found")
+    k = 0                                   # histories imported from SVN/CVS can start with empty commits
+    while k < min(len(commits) - 1, 500) and tree_is_empty(repo, commits[k][1]):
+        k += 1
+    commits = commits[k:]
     n = max(1, min(n, len(commits)))
     t_first, t_last = commits[0][0], commits[-1][0]
     picks: list[tuple[int, str]] = []
@@ -83,8 +101,28 @@ def extract(repo: Path, commit: str, dest: Path) -> None:
     res = subprocess.run(["git", "-C", str(repo), "archive", "--format=tar", commit], capture_output=True)
     if res.returncode != 0:
         raise RuntimeError(f"git archive {commit} failed: {res.stderr.decode(errors='replace')}")
-    with tarfile.open(fileobj=io.BytesIO(res.stdout)) as tf:
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(res.stdout))
+    except tarfile.ReadError:
+        raise RuntimeError(f"commit {commit[:10]} has no files to scan") from None
+    with tf:
+        members = list(_safe_members(tf))
         try:
-            tf.extractall(dest, filter="data")  # py>=3.12 safe extraction
+            tf.extractall(dest, members=members, filter="data")  # py>=3.12 safe extraction
         except TypeError:
-            tf.extractall(dest)
+            tf.extractall(dest, members=members)
+
+
+def _safe_members(tf: tarfile.TarFile):
+    """Regular files and directories with safe relative paths only.
+
+    Symlinks, hardlinks and device files are skipped: the scanner reads source text, and histories
+    do contain absolute or escaping symlinks that a strict extractor would abort on.
+    """
+    for m in tf:
+        if not (m.isreg() or m.isdir()):
+            continue
+        parts = PurePosixPath(m.name).parts
+        if m.name.startswith("/") or ".." in parts:
+            continue
+        yield m

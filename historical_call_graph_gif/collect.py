@@ -60,6 +60,18 @@ class Dataset:
             self.calls = [set() for _ in range(n)]
 
 
+def drop_leading_empty(ds: Dataset) -> Dataset:
+    """Remove leading snapshots that contain no functions yet (e.g. a repo that began as docs only)."""
+    k = 0
+    while k < len(ds.snaps) - 1 and not ds.alive[k]:
+        k += 1
+    if k:
+        ds.snaps, ds.alive, ds.calls = ds.snaps[k:], ds.alive[k:], ds.calls[k:]
+        for f in ds.funcs:
+            f.first, f.last = max(0, f.first - k), max(0, f.last - k)
+    return ds
+
+
 def _cols(con: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
 
