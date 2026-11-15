@@ -264,3 +264,82 @@ def test_road_age_is_measured_in_years_not_snapshots():
     assert scene.road_age_years([1, 0, 1], years) == [0.0, 0.0, 0.0]     # a gap resets the age
     assert scene.age_full_years([2000.0, 2026.0]) == 10.0
     assert scene.age_full_years([2020.0, 2023.0]) == pytest.approx(1.2)
+
+
+# ---- snapshot planning -------------------------------------------------------------------------
+from historical_call_graph_gif import plan  # noqa: E402
+
+DAY = 86400
+
+
+@pytest.mark.parametrize("years,active,commits,files,expected", [
+    (0.5, 2, 20, 100, 6),            # short: the minimum of 6 frames
+    (3, 12, 500, 800, 12),           # about one per quarter
+    (26, 100, 5000, 900, 48),        # long and small: capped at 48
+    (26, 100, 5000, 3000, 32),       # long and mid-sized: capped at 32 (scan cost)
+    (26, 100, 5000, 9000, 20),       # long and big: capped at 20
+    (10, 4, 300, 500, 6),            # dormant: only 4 quarters ever had commits, so no more than the floor
+    (2, 8, 3, 100, 3),               # never more snapshots than commits
+])
+def test_auto_count(years, active, commits, files, expected):
+    n, why = plan.auto_count(years, active, commits, files)
+    assert n == expected and why.startswith("auto:")
+
+
+def test_parse_every():
+    assert plan.parse_every("3m") == ("months", 3)
+    assert plan.parse_every("1y") == ("months", 12)
+    assert plan.parse_every("90d") == ("days", 90)
+    assert plan.parse_every("2w") == ("days", 14)
+    for bad in ("", "x", "0m", "3q", "-1y"):
+        with pytest.raises(ValueError):
+            plan.parse_every(bad)
+
+
+def _times(years, commits_per_year=50):
+    n = int(years * commits_per_year)
+    return [1_500_000_000 + i * (years * 365 * DAY) / max(1, n - 1) for i in range(n)]
+
+
+def test_choose_indices_auto_every_and_activity():
+    t = _times(10)
+    idx, note = plan.choose_indices(t, "auto", n_files=800)
+    assert idx[0] == 0 or t[idx[0]] <= t[0] + 1 and idx[-1] == len(t) - 1 and 20 <= len(idx) <= 32 and "auto" in note
+    idx, note = plan.choose_indices(t, "auto", every="1y")
+    assert 10 <= len(idx) <= 11 and idx[-1] == len(t) - 1
+    idx, note = plan.choose_indices(t, 8, spacing="activity")
+    assert len(idx) == 8 and idx[0] == 0 and idx[-1] == len(t) - 1 and "commit count" in note
+    with pytest.raises(RuntimeError, match="more than"):
+        plan.choose_indices(t, "auto", every="1d")
+
+
+def test_time_spacing_is_not_commit_spacing():
+    # 90 commits in the first week, 10 spread over four years: time spacing must still reach the later years
+    t = [1_500_000_000 + i * 6000 for i in range(90)] + [1_500_000_000 + (i + 1) * 146 * DAY for i in range(10)]
+    idx, _ = plan.choose_indices(t, 6)
+    assert max(idx) == len(t) - 1 and sum(1 for i in idx if i >= 90) >= 3
+
+
+def test_labels_follow_spacing_and_stay_unique():
+    q = [1_500_000_000 + i * 100 * DAY for i in range(8)]
+    assert all("Q" in x for x in plan.make_labels(q))
+    m = [1_500_000_000 + i * 30 * DAY for i in range(8)]
+    assert all(len(x) == 7 for x in plan.make_labels(m))                        # YYYY-MM
+    d = [1_500_000_000 + i * 2 * DAY for i in range(8)]
+    assert all(len(x) == 10 for x in plan.make_labels(d))                       # YYYY-MM-DD
+    dup = [1_500_000_000, 1_500_000_000 + 5 * DAY] + [1_500_000_000 + (60 + i * 25) * DAY for i in range(6)]
+    labels = plan.make_labels(dup)
+    assert len(set(labels)) == len(labels)
+    two_in_a_quarter = [1_500_000_000, 1_500_000_000 + 30 * DAY] + [1_500_000_000 + (130 + i * 100) * DAY for i in range(5)]
+    labels = plan.make_labels(two_in_a_quarter)                                 # a quarter repeats -> months, not dates
+    assert len(set(labels)) == len(labels) and all(len(x) == 7 for x in labels)
+
+
+def test_plan_snapshots_on_a_real_git_repo(tmp_path):
+    repo = _repo_with_empty_first_commit(tmp_path)
+    picks, note = snapshots.plan_snapshots(repo, "auto")
+    assert 2 <= len(picks) <= 3 and "auto" in note                              # three commits in total
+    last = snapshots.list_commits(repo)[-1][1]
+    assert picks[-1].commit == last
+    picks, note = snapshots.plan_snapshots(repo, "auto", every="5y")
+    assert picks[-1].commit == last and "every 5y" in note

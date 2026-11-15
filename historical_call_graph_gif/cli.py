@@ -63,8 +63,9 @@ def cmd_make(args) -> int:
     if not (repo / ".git").exists() and not (repo / "HEAD").exists():
         _say(f"error: {repo} is not a git repository")
         return 2
-    picks = snapshots.pick_snapshots(repo, args.snapshots, ref=args.ref, since=args.since, until=args.until)
-    _say(f"{title}: {len(picks)} snapshots, {picks[0].label} to {picks[-1].label}")
+    picks, note = snapshots.plan_snapshots(repo, args.snapshots, ref=args.ref, since=args.since, until=args.until,
+                                           every=args.every, spacing=args.spacing)
+    _say(f"{title}: {len(picks)} snapshots, {picks[0].label} to {picks[-1].label}   [{note}]")
     picks, dbs = scan.scan_all(repo, picks, work, jobs=args.jobs, history=args.history, progress=_say)
     ds = collect.drop_leading_empty(collect.from_snapshot_dbs(title, picks, dbs))
     _build_outputs(ds, args, out, args.basename or title)
@@ -102,8 +103,21 @@ def cmd_serve(args) -> int:
     return 0
 
 
+def _count(text: str):
+    if text.lower() == "auto":
+        return "auto"
+    try:
+        n = int(text)
+        if n >= 1:
+            return n
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("use a whole number or 'auto'")
+
+
 def _common(p: argparse.ArgumentParser) -> None:
-    p.add_argument("-n", "--snapshots", type=int, default=24, help="number of snapshots across the history (default 24)")
+    p.add_argument("-n", "--snapshots", type=_count, default="auto",
+                   help="number of snapshots, or 'auto' (default): sized from the history length, activity and repo size")
     p.add_argument("-o", "--out", default="roads-out", help="output directory (default ./roads-out)")
     p.add_argument("--formats", default="gif,mp4,html", help="comma list of gif,mp4,html (default all)")
     p.add_argument("--name", help="title shown in the outputs (default: repo name)")
@@ -123,6 +137,9 @@ def main(argv=None) -> int:
     m.add_argument("--ref", default="HEAD", help="branch or ref to follow (default HEAD)")
     m.add_argument("--since", help="only history after this date (e.g. 2022-01-01)")
     m.add_argument("--until", help="only history before this date")
+    m.add_argument("--every", metavar="INTERVAL", help="one snapshot per interval instead of a count: 90d, 2w, 3m, 1y")
+    m.add_argument("--spacing", choices=["time", "activity"], default="time",
+                   help="space snapshots evenly in time (default) or in commit count, which gives busy periods more frames")
     m.add_argument("--history", action="store_true", help="let GitGalaxy read git history too (slower; adds churn/stability)")
     m.add_argument("--keep-scans", action="store_true", help="keep the per-snapshot scan databases")
     _common(m)

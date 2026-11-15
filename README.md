@@ -24,15 +24,32 @@ The short command `hcg-gif` is an alias for `historical-call-graph-gif`. `ffmpeg
 ## Use
 
 ```bash
-historical-call-graph-gif make path/to/your/repo -n 24 -o roads-out     # or a clone URL
+historical-call-graph-gif make path/to/your/repo -o roads-out     # or a clone URL
 historical-call-graph-gif serve roads-out                               # http://127.0.0.1:8765/
 ```
 
-`make` picks 24 snapshots evenly spaced in time across the first-parent history, extracts each with `git archive`
+`make` chooses how many snapshots to take from the history itself (see below), extracts each with `git archive`
 (your working tree, branches and index are never touched), scans each with GalaxyScope, and writes
 `roads-out/<name>.gif`, `.mp4` and `.html`.
 
-Useful options: `--ref main`, `--since 2022-01-01`, `--formats html` (skip the GIF), `--jobs 4`, `--history`
+### How many snapshots, and when
+
+By default the count is **automatic**: about one snapshot per quarter for the first six years of history and
+roughly one per 2.5 quarters after that (a 3-year repo gets 12, a 26-year one up to 56), never more than the number
+of quarters that actually had commits, and capped by repository size because every snapshot is a full scan (48 for
+small repositories, 32 for mid-sized, 20 for big). The choice is printed so you can see why.
+
+```bash
+historical-call-graph-gif make repo -n 40            # a fixed number
+historical-call-graph-gif make repo --every 6m       # one per interval: 90d, 2w, 3m, 1y
+historical-call-graph-gif make repo --spacing activity   # evenly in commit count: busy periods get more frames
+historical-call-graph-gif make repo --since 2022-01-01   # only part of the history
+```
+
+Snapshots are spaced evenly in time by default, so a quiet year and a busy year get the same room. Labels
+follow the spacing (quarters, months or dates).
+
+Other options: `--ref main`, `--until`, `--formats html` (skip the GIF), `--jobs 4`, `--history`
 (let GitGalaxy read git history too; slower, adds churn and stability to the file risk scores),
 `--keep-scans` (keep the per-snapshot databases), `--max-files 4000`.
 

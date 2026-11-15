@@ -201,11 +201,13 @@ def from_master_db(title: str, db: Path, commits: list[tuple[str, str, str]]) ->
     return ds
 
 
-def master_db_commits(db: Path, n: int, repo_name: str | None = None) -> list[tuple[str, str, str]]:
-    """Evenly spaced (in time) commits from a multi-commit database."""
+def master_db_commits(db: Path, n="auto", repo_name: str | None = None) -> list[tuple[str, str, str]]:
+    """Snapshot commits chosen from a multi-commit database, oldest first: (label, date, commit_hash)."""
     import datetime as dt
+    from .plan import choose_indices, make_labels
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    q = "SELECT commit_date, commit_hash FROM repo_data"
+    cols = _cols(con, "repo_data")
+    q = "SELECT commit_date, commit_hash" + (", total_files" if "total_files" in cols else ", 0") + " FROM repo_data"
     args: tuple = ()
     if repo_name:
         q += " WHERE repo_name = ?"
@@ -214,21 +216,7 @@ def master_db_commits(db: Path, n: int, repo_name: str | None = None) -> list[tu
     con.close()
     if not rows:
         raise RuntimeError("no commits in database")
-
-    def t(d):
-        return dt.datetime.fromisoformat(d[:10]).timestamp()
-    t0, t1 = t(rows[0][0]), t(rows[-1][0])
-    n = max(1, min(n, len(rows)))
-    picks, j = [], 0
-    for i in range(n):
-        tt = t0 + (t1 - t0) * (i / (n - 1) if n > 1 else 1)
-        while j + 1 < len(rows) and t(rows[j + 1][0]) <= tt:
-            j += 1
-        if not picks or rows[j][1] != picks[-1][1]:
-            picks.append((rows[j][0][:10], rows[j][1]))
-    span = (t1 - t0) / 86400
-    out = []
-    for d, h in picks:
-        y, m = int(d[:4]), int(d[5:7])
-        out.append((d if span < 730 else f"{y} Q{(m - 1) // 3 + 1}", d, h))
-    return out
+    times = [dt.datetime.fromisoformat(r[0][:10]).replace(tzinfo=dt.timezone.utc).timestamp() for r in rows]
+    idx, _note = choose_indices(times, n, None, "time", int(rows[-1][2] or 0))
+    labels = make_labels([times[i] for i in idx])
+    return [(lab, rows[i][0][:10], rows[i][1]) for i, lab in zip(idx, labels)]

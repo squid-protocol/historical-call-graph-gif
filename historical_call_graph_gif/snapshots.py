@@ -14,6 +14,8 @@ from pathlib import PurePosixPath
 from dataclasses import dataclass
 from pathlib import Path
 
+from .plan import choose_indices, make_labels
+
 
 @dataclass
 class Pick:
@@ -53,46 +55,45 @@ def list_commits(repo: Path, ref: str = "HEAD") -> list[tuple[int, str]]:
     return rows
 
 
-def pick_snapshots(repo: Path, n: int, ref: str = "HEAD", since: str | None = None,
-                   until: str | None = None) -> list[Pick]:
-    """N commits evenly spaced in *time* between the first and last commit.
+def plan_snapshots(repo: Path, n="auto", ref: str = "HEAD", since: str | None = None, until: str | None = None,
+                   every: str | None = None, spacing: str = "time") -> tuple[list[Pick], str]:
+    """Choose snapshot commits; returns the picks and a one-line explanation of the choice.
 
-    Evenly spaced in time (not in commit count) so that a quiet year and a
-    busy year each get the same share of the animation.
+    ``n`` is a number or "auto" (sized from the history length, activity and repository size).
+    ``every`` ("3m", "1y", "90d") takes a snapshot per interval instead. ``spacing`` is "time" (evenly in
+    time, so a quiet year and a busy year get equal room) or "activity" (evenly in commit count).
     """
     commits = list_commits(repo, ref)
     if since:
         t0 = int(_git(repo, "log", "-1", "--format=%ct", f"--until={since}", ref).strip() or 0)
         commits = [c for c in commits if c[0] >= t0] or commits
     if until:
-        commits = [c for c in commits if c[0] <= int(_git(repo, "log", "-1", "--format=%ct", f"--until={until}", ref).strip() or 10**12)] or commits
+        t1 = int(_git(repo, "log", "-1", "--format=%ct", f"--until={until}", ref).strip() or 10 ** 12)
+        commits = [c for c in commits if c[0] <= t1] or commits
     if not commits:
         raise RuntimeError("no commits found")
     k = 0                                   # histories imported from SVN/CVS can start with empty commits
     while k < min(len(commits) - 1, 500) and tree_is_empty(repo, commits[k][1]):
         k += 1
     commits = commits[k:]
-    n = max(1, min(n, len(commits)))
-    t_first, t_last = commits[0][0], commits[-1][0]
-    picks: list[tuple[int, str]] = []
-    if n == 1 or t_first == t_last:
-        picks = [commits[-1]]
-    else:
-        times = [t_first + (t_last - t_first) * i / (n - 1) for i in range(n)]
-        j = 0
-        for tt in times:
-            while j + 1 < len(commits) and commits[j + 1][0] <= tt:
-                j += 1
-            if not picks or commits[j][1] != picks[-1][1]:
-                picks.append(commits[j])
+    times = [t for t, _ in commits]
+    n_files = 0
+    if not every and n in (None, "auto"):
+        n_files = len(_git(repo, "ls-tree", "-r", "--name-only", commits[-1][1]).splitlines())
+    idx, note = choose_indices(times, n, every, spacing, n_files)
+    labels = make_labels([times[i] for i in idx])
+    picks = [Pick(commits[i][1], _utc_date(commits[i][0]), lab) for i, lab in zip(idx, labels)]
+    return picks, note
+
+
+def pick_snapshots(repo: Path, n="auto", ref: str = "HEAD", since: str | None = None,
+                   until: str | None = None, every: str | None = None, spacing: str = "time") -> list[Pick]:
+    return plan_snapshots(repo, n, ref, since, until, every, spacing)[0]
+
+
+def _utc_date(t: int) -> str:
     import datetime as dt
-    out = []
-    span_days = (t_last - t_first) / 86400
-    for t, sha in picks:
-        d = dt.datetime.fromtimestamp(t, dt.timezone.utc)
-        label = d.strftime("%Y-%m-%d") if span_days < 2 * 365 else f"{d.year} Q{(d.month - 1) // 3 + 1}"
-        out.append(Pick(sha, d.strftime("%Y-%m-%d"), label))
-    return out
+    return dt.datetime.fromtimestamp(t, dt.timezone.utc).strftime("%Y-%m-%d")
 
 
 def extract(repo: Path, commit: str, dest: Path) -> None:
