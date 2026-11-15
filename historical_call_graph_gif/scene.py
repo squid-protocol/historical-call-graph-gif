@@ -11,7 +11,6 @@ import numpy as np
 from .collect import Dataset
 from .layout import Layout, dir_of, route
 
-AGE_FULL = 40          # a road this many snapshots old (or older) gets the "old" colour; scaled in renderers
 
 
 @dataclass
@@ -47,6 +46,35 @@ def runs(flags) -> list:
             start = None
     if start is not None:
         out += [start, len(flags) - 1]
+    return out
+
+
+def snap_years(ds: Dataset) -> list:
+    """Snapshot dates as fractional years."""
+    import datetime as dt
+    out = []
+    for sn in ds.snaps:
+        d = dt.date.fromisoformat(sn.date[:10])
+        out.append(d.year + (d.timetuple().tm_yday - 1) / 366.0)
+    return out
+
+
+def age_full_years(years: list) -> float:
+    """Elapsed years at which a road gets the 'old' colour: 10 for long histories, shorter for short ones."""
+    span = (years[-1] - years[0]) if len(years) > 1 else 1.0
+    return float(min(10.0, max(1.0, span / 2.5)))
+
+
+def road_age_years(counts: list, years: list) -> list:
+    """Years each road has existed without a break, as of each snapshot (0 when it has just appeared)."""
+    start, out = None, []
+    for c, y in zip(counts, years):
+        if c:
+            start = y if start is None else start
+            out.append(y - start)
+        else:
+            start = None
+            out.append(0.0)
     return out
 
 

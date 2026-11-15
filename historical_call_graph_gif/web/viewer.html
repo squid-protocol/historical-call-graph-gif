@@ -61,10 +61,11 @@ body.pan #caption{left:calc((100% - 360px)/2);max-width:calc(100% - 392px)}
   <select id="speed" aria-label="Speed"><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option></select>
   <label class="tg"><input type="checkbox" id="tgRoads" checked>roads</label>
   <label class="tg"><input type="checkbox" id="tgLabels" checked>labels</label>
+  <label class="tg" title="Highlight what was born or died at each snapshot"><input type="checkbox" id="tgChg" checked>changes</label>
   <input id="q" type="search" placeholder="find a function" aria-label="Find a function">
 </div>
 <div id="legend">
-  <div>road colour = age</div><div id="grad"></div><div><span>new</span><span>old</span></div>
+  <div>road colour = age</div><div id="grad"></div><div><span>new</span><span id="legold">old</span></div>
   <div>road width = calls merged</div>
   <div><span class="dot" style="background:var(--lime)"></span>born &nbsp; <span class="dot" style="background:var(--amber)"></span>died</div>
   <div>click a function or file &middot; wheel to zoom</div>
@@ -91,6 +92,9 @@ E.forEach((e,i)=>{const rg=e[2];for(let k=0;k<rg.length;k+=2)for(let s=rg[k];s<=
 const indeg=[];for(let s=0;s<N;s++){const a=new Uint16Array(FN.length);for(const ei of edgesAt[s])a[E[ei][1]]++;indeg.push(a);}
 const fileCount=[];for(let s=0;s<N;s++){const a=new Uint16Array(F.length);for(let i=0;i<FN.length;i++)if(alive[s][i])a[FN[i][1]]++;fileCount.push(a);}
 const roadAge=R.map(r=>{let a=0;return r.c.map(c=>(a=c?a+1:0));});
+const yrs=D.meta.snaps.map(sn=>{const d=new Date(sn.date+"T00:00:00Z");return d.getUTCFullYear()+(d-Date.UTC(d.getUTCFullYear(),0,1))/31622400000;});
+const FULLY=Math.min(10,Math.max(1,(yrs.length>1?yrs[yrs.length-1]-yrs[0]:1)/2.5));
+const roadYrs=R.map(r=>{let st=null;return r.c.map((c,i)=>{if(c){if(st===null)st=yrs[i];return yrs[i]-st;}st=null;return 0;});});
 const roadPath=R.map(r=>{const p=new Path2D(),q=r.p;p.moveTo(q[0],q[1]);for(let i=2;i<q.length;i+=2)p.lineTo(q[i],q[i+1]);return p;});
 const hubSet=new Set(D.hubs);
 /* spatial grid over functions */
@@ -99,7 +103,7 @@ FN.forEach((f,i)=>{const k=Math.floor(f[2]/CELL)+","+Math.floor(f[3]/CELL);let a
 
 /* ---------- view ---------- */
 let W=0,H=0,dpr=1,view={k:1,tx:0,ty:0},T=0,playing=false,sel=null,lastTs=0;
-const opts={roads:true,labels:true};
+const opts={roads:true,labels:true,changes:true};
 function resize(){dpr=window.devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;fit();}
 function fit(){const panel=$("panel").classList.contains("open")&&W>700?360:0,aw=W-panel,ah=H-90;view.k=Math.min(aw,ah)/(2*EXT*1.04);view.tx=aw/2;view.ty=46+ah/2;draw();}
 const toScreen=(x,y)=>[x*view.k+view.tx,-y*view.k+view.ty];
@@ -109,7 +113,7 @@ const inRg=(rg,s)=>{for(let k=0;k<rg.length;k+=2)if(s>=rg[k]&&s<=rg[k+1])return 
 /* ---------- drawing ---------- */
 const LV=[.30,.42,.54,.66,.78,.9];
 function draw(){
-  const s=Math.min(N-1,Math.floor(T+1e-9)),t=T-s,fade=Math.max(0,1-t),prev=s?s-1:0,k=view.k;
+  const s=Math.min(N-1,Math.floor(T+1e-9)),t=T-s,ch=opts.changes,fade=Math.max(0,1-t),prev=s?s-1:0,k=view.k;
   ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle="#0b0f17";ctx.fillRect(0,0,W,H);
   ctx.setTransform(k*dpr,0,0,-k*dpr,view.tx*dpr,view.ty*dpr);
   const x0=-view.tx/k,x1=(W-view.tx)/k,y1=view.ty/k,y0=-(H-view.ty)/k;   // visible world box
@@ -121,27 +125,27 @@ function draw(){
   // roads
   if(opts.roads){
     const live=[];for(let i=0;i<R.length;i++)if(R[i].c[s])live.push(i);
-    live.sort((a,b)=>roadAge[a][s]-roadAge[b][s]);
+    live.sort((a,b)=>roadYrs[a][s]-roadYrs[b][s]);
     ctx.lineCap="round";ctx.lineJoin="round";
-    for(const i of live){const r=R[i],age=roadAge[i][s],a=Math.min(age/40,1),n=r.c[s];
-      let al=(.20+.30*Math.min(1,Math.sqrt(n)/4))*(1-.35*a);if(age<=1&&s>0)al=Math.min(1,al+.30*fade);
+    for(const i of live){const r=R[i],age=roadAge[i][s],a=Math.min(roadYrs[i][s]/FULLY,1),n=r.c[s];
+      let al=(.20+.30*Math.min(1,Math.sqrt(n)/4))*(1-.35*a);if(age<=1&&s>0&&ch)al=Math.min(1,al+.30*fade);
       if(sel!==null)al*=.55;
       const c=rampColor(a);ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${al})`;ctx.lineWidth=(.35+.25*Math.sqrt(n))*1.15/k;ctx.stroke(roadPath[i]);}
-    if(s>0){ctx.strokeStyle=`rgba(255,176,0,${.45*fade})`;
+    if(s>0&&ch){ctx.strokeStyle=`rgba(255,176,0,${.45*fade})`;
       for(let i=0;i<R.length;i++)if(R[i].c[s-1]&&!R[i].c[s]){ctx.lineWidth=(.35+.25*Math.sqrt(R[i].c[s-1]))*1.15/k;ctx.stroke(roadPath[i]);}}
   }
   // functions
   const buckets=[[],[],[],[],[],[]],born=[],died=[];
   for(let i=0;i<FN.length;i++){const f=FN[i];if(!vis(f[2],f[3],f[4]))continue;
     const a=alive[s][i],p=s?alive[s-1][i]:a;
-    if(a&&!p&&s>0)born.push(i);else if(a)buckets[Math.min(5,Math.floor(Math.log2(1+indeg[s][i])*1.3))].push(i);else if(p&&s>0)died.push(i);}
+    if(a&&!p&&s>0&&ch)born.push(i);else if(a)buckets[Math.min(5,Math.floor(Math.log2(1+indeg[s][i])*1.3))].push(i);else if(p&&s>0&&ch)died.push(i);}
   const rad=i=>Math.max(FN[i][4]*.95,.8/k);
   const fillSet=(arr,style,grow)=>{if(!arr.length)return;ctx.fillStyle=style;ctx.beginPath();for(const i of arr){const f=FN[i],r=rad(i)*grow;ctx.moveTo(f[2]+r,f[3]);ctx.arc(f[2],f[3],r,0,6.2832);}ctx.fill();};
   buckets.forEach((b,l)=>fillSet(b,`rgba(196,205,224,${LV[l]})`,1));
   fillSet(born,`rgba(210,245,106,${.40+.55*fade})`,1+.9*fade);
   fillSet(died,`rgba(255,176,0,${.85*fade})`,1+.4*fade);
   // new folder rings
-  for(let s0=Math.max(0,s-2);s0<=s;s0++){const age=(s-s0)+t;if(age>=3)continue;const fa=1-age/3;
+  for(let s0=Math.max(0,s-2);ch&&s0<=s;s0++){const age=(s-s0)+t;if(age>=3)continue;const fa=1-age/3;
     ctx.strokeStyle=`rgba(255,255,255,${.3+.6*fa})`;ctx.lineWidth=(1+1.6*fa)*1.2/k;ctx.beginPath();
     for(const nd of D.newdirs[s0])for(const f of nd.f){const o=F[f];ctx.moveTo(o.x+o.r+1.2,o.y);ctx.arc(o.x,o.y,o.r+1.2,0,6.2832);}ctx.stroke();}
   // selection: callers (white) and callees (blue)
@@ -154,13 +158,18 @@ function draw(){
   // labels (screen space)
   ctx.setTransform(dpr,0,0,dpr,0,0);
   if(opts.labels){
-    ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="11px system-ui";
-    for(const d of D.dirs){let live=0;for(const f of d.f)if(fileCount[s][f])live++;if(live<4)continue;const [sx,sy]=toScreen(d.x,d.y);
-      if(sx<-50||sx>W+50||sy<-20||sy>H+20)continue;halo(d.d,sx,sy,"rgba(154,166,191,.8)");}
-    ctx.font="10.5px system-ui";
-    for(let f=0;f<F.length;f++){const o=F[f];if(!fileCount[s][f])continue;const big=o.r*k>46;if(!(big||hubSet.has(f)&&o.r*k>9))continue;
-      const [sx,sy]=toScreen(o.x,o.y-o.r);if(sx<-50||sx>W+50||sy<-20||sy>H+20)continue;halo(o.p.split("/").pop(),sx,sy+8,hubSet.has(f)?"#f6ecd2":"rgba(200,208,226,.75)");}
-    if(sel&&sel.kind==="func"){const f=FN[sel.i],[sx,sy]=toScreen(f[2],f[3]);ctx.font="bold 12px system-ui";halo(f[0],sx,sy-12,"#ffe9a8");}
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    const boxes=[],onscreen=(sx,sy)=>sx>-50&&sx<W+50&&sy>-20&&sy<H+20;
+    const place=(txt,sx,sy,col,font)=>{ctx.font=font;const w=ctx.measureText(txt).width,h=13,bx=[sx-w/2-3,sy-h/2-1,sx+w/2+3,sy+h/2+1];
+      for(const q of boxes)if(bx[0]<q[2]&&bx[2]>q[0]&&bx[1]<q[3]&&bx[3]>q[1])return false;boxes.push(bx);halo(txt,sx,sy,col);return true;};
+    if(sel&&sel.kind==="func"){const f=FN[sel.i],[sx,sy]=toScreen(f[2],f[3]);place(f[0],sx,sy-12,"#ffe9a8","bold 12px system-ui");}
+    for(let f=0;f<F.length;f++){if(!hubSet.has(f)||!fileCount[s][f])continue;const o=F[f];if(o.r*k<=9)continue;const [sx,sy]=toScreen(o.x,o.y-o.r);
+      if(onscreen(sx,sy))place(o.p.split("/").pop(),sx,sy+8,"#f6ecd2","10.5px system-ui");}
+    const ds=[];for(const d of D.dirs){let live=0;for(const f of d.f)if(fileCount[s][f])live+=fileCount[s][f];if(live>=15)ds.push([live,d]);}
+    ds.sort((a,b)=>b[0]-a[0]);
+    for(const [live,d] of ds){const [sx,sy]=toScreen(d.x,d.y);if(onscreen(sx,sy))place(d.d,sx,sy,"rgba(154,166,191,.85)","11px system-ui");}
+    for(let f=0;f<F.length;f++){const o=F[f];if(!fileCount[s][f]||hubSet.has(f)||o.r*k<=46)continue;const [sx,sy]=toScreen(o.x,o.y-o.r);
+      if(onscreen(sx,sy))place(o.p.split("/").pop(),sx,sy+8,"rgba(200,208,226,.8)","10.5px system-ui");}
   }
   $("when").textContent=D.meta.snaps[s].label;
   $("caption").textContent=D.meta.caps[s];
@@ -185,6 +194,7 @@ document.addEventListener("keydown",e=>{if(e.target.tagName==="INPUT"&&e.target.
   else if(e.key==="Escape")closePanel();});
 $("tgRoads").onchange=e=>{opts.roads=e.target.checked;draw();};
 $("tgLabels").onchange=e=>{opts.labels=e.target.checked;draw();};
+$("tgChg").onchange=e=>{opts.changes=e.target.checked;draw();};
 
 /* ---------- pan / zoom / pick ---------- */
 let drag=null;
@@ -255,6 +265,7 @@ $("q").addEventListener("keydown",e=>{if(e.key!=="Enter")return;const q=e.target
 
 /* ---------- boot ---------- */
 $("title").textContent=D.meta.title;
+if(FULLY>=1.5)$("legold").textContent=Math.round(FULLY)+"+ yr";
 if(D.meta.dropped_files>0){const n=$("dropnote");n.style.display="block";n.textContent=`${D.meta.dropped_files.toLocaleString()} small files (${(D.meta.dropped_funcs||0).toLocaleString()} functions) are not drawn`;}
 window.addEventListener("resize",resize);resize();
 (function(){const h=new URLSearchParams(location.hash.slice(1));if(h.has("t"))T=Math.min(N-1,Math.max(0,parseFloat(h.get("t"))||0));

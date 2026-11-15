@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .layout import dir_of
-from .scene import AGE_FULL, Scene, road_ages
+from .scene import Scene, age_full_years, road_age_years, road_ages, snap_years
 
 BG = "#0b0f17"
 BIRTH, DEATH = "#d2f56a", "#ffb000"
@@ -52,6 +52,9 @@ def _prepare(sc: Scene) -> dict:
             arr[k] = v
         indeg.append(arr)
     ages = [road_ages(r.counts) for r in sc.roads]
+    years = snap_years(ds)
+    ageyrs = [road_age_years(r.counts, years) for r in sc.roads]
+    full = age_full_years(years)
     wt = Counter()
     for r in sc.roads:
         w = max(r.counts)
@@ -64,7 +67,7 @@ def _prepare(sc: Scene) -> dict:
         groups.setdefault(dir_of(p), []).append(i)
     for d, fs in groups.items():
         dcen[d] = lay.file_xy[fs].mean(0)
-    return dict(alive=alive, indeg=indeg, ages=ages, hubs=hubs, dcen=dcen, groups=groups)
+    return dict(alive=alive, indeg=indeg, ages=ages, ageyrs=ageyrs, full=full, hubs=hubs, dcen=dcen, groups=groups)
 
 
 def _figure():
@@ -108,11 +111,11 @@ def render_frame(args) -> str:
     for f in live_files:
         ax.add_patch(plt.Circle(fx[f], fr[f], fill=False, ec=_rgba("#8a96b0", 0.22), lw=0.35, zorder=0.3))
     # roads
-    items = [(r, P["ages"][k][s]) for k, r in enumerate(sc.roads) if r.counts[s]]
-    items.sort(key=lambda x: x[1])
+    items = [(r, P["ages"][k][s], P["ageyrs"][k][s]) for k, r in enumerate(sc.roads) if r.counts[s]]
+    items.sort(key=lambda x: x[2])
     segs, cols, lws = [], [], []
-    for r, age in items:
-        a = min(age / AGE_FULL, 1.0)
+    for r, age, yrs in items:
+        a = min(yrs / P["full"], 1.0)
         c = to_rgb(cm(a))
         al = (0.20 + 0.30 * min(1, np.sqrt(r.counts[s]) / 4)) * (1 - 0.35 * a)
         if age <= 1 and s > 0:
@@ -146,7 +149,7 @@ def render_frame(args) -> str:
     gx.imshow(np.linspace(0, 1, 128)[None], aspect="auto", cmap=cm)
     gx.axis("off")
     ax.text(0.02, 0.908, "new", color=AGE_COLORS[0], fontsize=11, va="top", transform=T)
-    ax.text(0.18, 0.908, "old", color=AGE_COLORS[2], fontsize=11, va="top", ha="right", transform=T)
+    ax.text(0.18, 0.908, f"{P['full']:.0f}+ yr" if P["full"] >= 1.5 else "old", color=AGE_COLORS[2], fontsize=11, va="top", ha="right", transform=T)
     ax.text(0.20, 0.9335, "road colour = age of the road", color="#d5dcec", fontsize=12, va="top", transform=T)
     ax.text(0.20, 0.916, "road width = calls merged into it", color="#d5dcec", fontsize=12, va="top", transform=T)
     ax.text(0.54, 0.9335, "●", color=DEATH, fontsize=15, va="top", transform=T)
@@ -155,14 +158,25 @@ def render_frame(args) -> str:
     ax.text(0.565, 0.916, "born", color="#d5dcec", fontsize=12, va="top", transform=T)
     ax.text(0.02, 0.884, "Circles are files, dots are functions (brighter = more callers). Only what is alive that snapshot is shown.",
             color="#9aa6bf", fontsize=10.5, va="top", transform=T)
-    for d, c in P["dcen"].items():
-        n_here = sum(1 for f in P["groups"][d] if f in live_files)
-        if n_here >= 4:
-            ax.text(c[0], c[1], d, color="#9aa6bf", fontsize=9, ha="center", va="center", alpha=0.75, zorder=5, path_effects=halo)
+    boxes = []
+    u = 2 * ext / 1000.0                                  # data units per pixel (figure is 1000 px wide)
+
+    def place(txt, x, y, fs, **kw):
+        w, h = len(txt) * fs * 0.58 * (100 / 72) * u, fs * 1.5 * (100 / 72) * u
+        b = (x - w / 2, y - h / 2, x + w / 2, y + h / 2)
+        for q in boxes:
+            if b[0] < q[2] and b[2] > q[0] and b[1] < q[3] and b[3] > q[1]:
+                return
+        boxes.append(b)
+        ax.text(x, y, txt, fontsize=fs, ha="center", va="center", zorder=5, path_effects=halo, **kw)
+
     for f in P["hubs"]:
         if f in live_files:
-            ax.text(fx[f][0], fx[f][1] - fr[f] - ext * 0.008, lay.files[f].split("/")[-1], color="#f6ecd2", fontsize=8.5,
-                    ha="center", va="top", zorder=5, path_effects=halo)
+            place(lay.files[f].split("/")[-1], fx[f][0], fx[f][1] - fr[f] - ext * 0.012, 8.5, color="#f6ecd2")
+    ranked = sorted(P["dcen"].items(), key=lambda kv: -sum(1 for f in P["groups"][kv[0]] if f in live_files))
+    for d, c in ranked:
+        if sum(1 for f in P["groups"][d] if f in live_files) >= 4:
+            place(d, c[0], c[1], 9, color="#9aa6bf", alpha=0.8)
     for s0 in range(max(0, s - 2), s + 1):
         age = (s - s0) + t
         if age < 3:

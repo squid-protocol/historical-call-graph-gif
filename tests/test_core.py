@@ -256,3 +256,11 @@ def test_layout_scales_to_hundreds_of_files_without_overlap():
     n = len(lay.files)
     d = np.hypot(*(lay.file_xy[:, None] - lay.file_xy[None]).transpose(2, 0, 1))
     assert (d + np.eye(n) * 1e9 >= lay.file_r[:, None] + lay.file_r[None] - 1.5).all()
+
+
+def test_road_age_is_measured_in_years_not_snapshots():
+    years = [2000.0, 2010.0, 2020.0]
+    assert scene.road_age_years([1, 1, 1], years) == [0.0, 10.0, 20.0]
+    assert scene.road_age_years([1, 0, 1], years) == [0.0, 0.0, 0.0]     # a gap resets the age
+    assert scene.age_full_years([2000.0, 2026.0]) == 10.0
+    assert scene.age_full_years([2020.0, 2023.0]) == pytest.approx(1.2)
