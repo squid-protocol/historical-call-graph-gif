@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-roads"
+version = "0.1.0"
+description = "Turn a git repository's history into an animated road map of its call network (GIF, MP4 and a self-hosted interactive page), powered by GitGalaxy."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.23", "scipy>=1.9", "matplotlib>=3.5", "pillow>=9.0"]
+
+[project.optional-dependencies]
+engine = ["gitgalaxy"]
+dev = ["pytest"]
+
+[project.scripts]
+repo-roads = "repo_roads.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["repo_roads*"]
+
+[tool.setuptools.package-data]
+repo_roads = ["web/*"]
