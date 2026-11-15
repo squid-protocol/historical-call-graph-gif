@@ -343,3 +343,103 @@ def test_plan_snapshots_on_a_real_git_repo(tmp_path):
     assert picks[-1].commit == last
     picks, note = snapshots.plan_snapshots(repo, "auto", every="5y")
     assert picks[-1].commit == last and "every 5y" in note
+
+
+# ---- style, framing and output --------------------------------------------------------------------
+import shutil  # noqa: E402
+
+from historical_call_graph_gif import cli, gif, style  # noqa: E402
+
+
+def test_presets_and_aliases():
+    assert (style.resolve("landscape").width, style.resolve("landscape").height) == (1920, 1080)
+    assert (style.resolve("square").width, style.resolve("square").height) == (1080, 1080)
+    sh = style.resolve("shorts")
+    assert (sh.width, sh.height) == (1080, 1920) and sh.formats == "mp4" and sh.duration == 45 and sh.text_scale > 1
+    assert sh.pad_bottom >= 300 and sh.pad_top > 0                     # keeps text clear of the app's own interface
+    for alias in ("phone", "vertical", "reels", "tiktok", "story"):
+        assert style.resolve(alias).preset == "shorts"
+    assert style.resolve("shorts").suffix == "-shorts" and style.resolve("default").suffix == ""
+
+
+def test_size_override_and_validation():
+    st = style.resolve("default", size="1281x721")
+    assert (st.width, st.height) == (1280, 720) and st.preset == "custom"        # H.264 needs even sizes
+    assert style.resolve("shorts", size="720x1280").width == 720 and style.resolve("shorts", size="720x1280").preset == "shorts"
+    for bad in ("100x100", "5000x5000", "wide", "1080"):
+        with pytest.raises(ValueError):
+            style.resolve(size=bad)
+    for kw in (dict(quality="ultra"), dict(zoom=20), dict(duration=1), dict(hold=99), dict(fit="stretch"),
+               dict(frames_per_snapshot=0), dict(text_scale=9)):
+        with pytest.raises(ValueError):
+            style.resolve(**kw)
+    with pytest.raises(ValueError):
+        style.resolve("nope")
+
+
+def test_quality_controls_gif_width_and_encoder():
+    assert style.resolve(quality="draft").gif_width == 480 and style.resolve(quality="high").gif_width == 960
+    assert style.resolve("square", quality="max").gif_width == 1080                     # never wider than the frame
+    assert style.resolve(quality="max").q["crf"] < style.resolve(quality="draft").q["crf"]
+    assert style.resolve(gif_width=601).gif_width == 600
+
+
+def test_cli_rejects_bad_style_before_scanning(tmp_path, capsys):
+    rc = cli.main(["make", str(tmp_path), "--size", "100x100", "-o", str(tmp_path / "o")])
+    assert rc == 1 and "size must be between" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["make", str(tmp_path), "--preset", "nope"])
+
+
+def _demo_scene():
+    ds = make_dataset()
+    return scene.build_scene(ds, layout.build(ds, iterations=60))
+
+
+def test_geometry_fit_zoom_and_focus():
+    sc = _demo_scene()
+    contain = gif.geometry(sc, style.resolve("shorts"))
+    fill = gif.geometry(sc, style.resolve("shorts", fit="fill"))
+    zoomed = gif.geometry(sc, style.resolve("shorts", zoom=2))
+    assert fill["k"] >= contain["k"] and zoomed["k"] == pytest.approx(contain["k"] * 2)
+    foc = gif.geometry(sc, style.resolve("shorts", focus="lib/"))
+    assert foc["k"] > contain["k"]                                                      # zoomed in on one folder
+    with pytest.raises(RuntimeError, match="matches no files"):
+        gif.geometry(sc, style.resolve(focus="nope/"))
+    # the whole visible window keeps the frame's aspect ratio
+    (x0, x1), (y0, y1) = contain["xlim"], contain["ylim"]
+    assert (x1 - x0) / (y1 - y0) == pytest.approx(1080 / 1920)
+
+
+def test_render_png_has_exact_size_and_preset_suffix(tmp_path):
+    from PIL import Image
+    sc = _demo_scene()
+    for preset, size in (("shorts", (1080, 1920)), ("landscape", (1920, 1080)), ("square", (1080, 1080))):
+        st = style.resolve(preset, formats="png", frames_per_snapshot=1, title="My title", credit="@me", subtitle="Sub")
+        made = gif.render(sc, tmp_path, name="demo", style=st, jobs=1, progress=lambda m: None)
+        assert [p.name for p in made] == [f"demo-{preset}.png"]
+        assert Image.open(made[0]).size == size
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="ffmpeg not installed")
+def test_render_mp4_dimensions_duration_and_hold(tmp_path):
+    import subprocess
+    sc = _demo_scene()
+    st = style.resolve("shorts", size="360x640", formats="mp4", duration=6, hold=2, frames_per_snapshot=2, quality="draft")
+    made = gif.render(sc, tmp_path, name="demo", style=st, jobs=1, progress=lambda m: None)
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                          "stream=width,height,codec_name,pix_fmt,avg_frame_rate", "-show_entries", "format=duration",
+                          "-of", "default=nw=1", str(made[0])], capture_output=True, text=True).stdout
+    info = dict(line.split("=") for line in out.split())
+    assert (info["width"], info["height"], info["codec_name"], info["pix_fmt"]) == ("360", "640", "h264", "yuv420p")
+    assert info["avg_frame_rate"] == "30/1"
+    assert 7.5 <= float(info["duration"]) <= 9.0       # 6 s animation + 2 s hold, rounded up to whole source frames
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg not installed")
+def test_render_gif_respects_gif_width(tmp_path):
+    from PIL import Image
+    sc = _demo_scene()
+    st = style.resolve("square", size="640x640", formats="gif", frames_per_snapshot=1, gif_width=320)
+    made = gif.render(sc, tmp_path, name="demo", style=st, jobs=1, progress=lambda m: None)
+    assert Image.open(made[0]).size[0] == 320

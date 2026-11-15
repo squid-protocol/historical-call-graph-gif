@@ -14,14 +14,26 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__
+from . import __version__, style as style_mod
 
 
 def _say(msg: str) -> None:
     print(msg, flush=True)
 
 
-def _build_outputs(ds, args, out: Path, name: str) -> None:
+def _make_style(args):
+    try:
+        return style_mod.resolve(
+            preset=args.preset, size=args.size, title=args.title, subtitle=args.subtitle, credit=args.credit,
+            show_legend=not args.no_legend, show_captions=not args.no_captions, fit=args.fit, zoom=args.zoom,
+            focus=args.focus, quality=args.quality, fps=args.fps, duration=args.duration, hold=args.hold,
+            frames_per_snapshot=args.frames_per_snapshot, smooth=not args.no_smooth, gif_width=args.gif_width,
+            text_scale=args.text_scale, formats=args.formats)
+    except ValueError as e:
+        raise RuntimeError(str(e)) from None
+
+
+def _build_outputs(ds, args, out: Path, name: str, st) -> None:
     from . import gif, html, layout, scene
     _say(f"laying out {len(ds.funcs):,} functions ...")
     lay = layout.build(ds, max_files=args.max_files)
@@ -29,13 +41,15 @@ def _build_outputs(ds, args, out: Path, name: str) -> None:
         _say(f"  note: {lay.dropped_files} files ({lay.dropped_funcs:,} functions) are not drawn (limit --max-files {args.max_files}); raise it to draw more")
     sc = scene.build_scene(ds, lay)
     _say(f"  {len(sc.roads):,} roads over {sc.n} snapshots")
-    formats = {f.strip() for f in args.formats.split(",") if f.strip()}
+    formats = {f.strip() for f in st.formats.split(",") if f.strip()}
+    unknown = formats - {"gif", "mp4", "html", "png", "frames"}
+    if unknown:
+        raise RuntimeError(f"unknown format(s): {', '.join(sorted(unknown))}; use gif, mp4, html, png, frames")
     made = []
     if "html" in formats:
         made.append(html.write_html(sc, out / f"{name}.html"))
-    if formats & {"gif", "mp4"}:
-        made += gif.render(sc, out, name=name, title=args.title, fps=args.fps, formats=formats,
-                           jobs=args.jobs, progress=_say)
+    if formats & {"gif", "mp4", "png", "frames"}:
+        made += gif.render(sc, out, name=name, style=st, jobs=args.jobs, progress=_say)
     _say("")
     for p in made:
         _say(f"  wrote {p}  ({p.stat().st_size / 1e6:.1f} MB)")
@@ -46,6 +60,7 @@ def _build_outputs(ds, args, out: Path, name: str) -> None:
 def cmd_make(args) -> int:
     from . import collect, scan, snapshots
     t0 = time.time()
+    st = _make_style(args)                    # fail on a bad size/preset now, not after the scans
     target = args.repo
     out = Path(args.out).resolve()
     work = out / ".work"
@@ -68,7 +83,7 @@ def cmd_make(args) -> int:
     _say(f"{title}: {len(picks)} snapshots, {picks[0].label} to {picks[-1].label}   [{note}]")
     picks, dbs = scan.scan_all(repo, picks, work, jobs=args.jobs, history=args.history, progress=_say)
     ds = collect.drop_leading_empty(collect.from_snapshot_dbs(title, picks, dbs))
-    _build_outputs(ds, args, out, args.basename or title)
+    _build_outputs(ds, args, out, args.basename or title, st)
     if not args.keep_scans:
         shutil.rmtree(work, ignore_errors=True)
     _say(f"done in {time.time() - t0:.0f}s")
@@ -77,10 +92,11 @@ def cmd_make(args) -> int:
 
 def cmd_from_db(args) -> int:
     from . import collect
+    st = _make_style(args)
     commits = collect.master_db_commits(Path(args.db), args.snapshots, args.repo)
     ds = collect.drop_leading_empty(collect.from_master_db(args.name or args.repo or Path(args.db).stem, Path(args.db), commits))
     out = Path(args.out).resolve()
-    _build_outputs(ds, args, out, args.basename or ds.title)
+    _build_outputs(ds, args, out, args.basename or ds.title, st)
     return 0
 
 
@@ -119,11 +135,34 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("-n", "--snapshots", type=_count, default="auto",
                    help="number of snapshots, or 'auto' (default): sized from the history length, activity and repo size")
     p.add_argument("-o", "--out", default="roads-out", help="output directory (default ./roads-out)")
-    p.add_argument("--formats", default="gif,mp4,html", help="comma list of gif,mp4,html (default all)")
-    p.add_argument("--name", help="title shown in the outputs (default: repo name)")
-    p.add_argument("--basename", help="output file name without extension")
-    p.add_argument("--title", help="title text drawn on the GIF/MP4 (default 'Roads of <name>')")
-    p.add_argument("--fps", type=float, default=6.0, help="GIF/MP4 frames per second (default 6)")
+    g = p.add_argument_group("output")
+    g.add_argument("--formats", help="comma list of gif,mp4,html,png,frames (default: depends on --preset; 'shorts' makes an MP4)")
+    g.add_argument("--preset", choices=style_mod.preset_names(), default="default",
+                   help="frame shape: landscape 1920x1080, square 1080x1080, portrait 1080x1350, "
+                        "shorts 1080x1920 for phones (YouTube Shorts, Reels, TikTok); aliases: phone, vertical, reels, tiktok")
+    g.add_argument("--size", metavar="WxH", help="exact size in pixels, e.g. 1080x1920 (overrides the preset's size)")
+    g.add_argument("--quality", choices=list(style_mod.QUALITY), default="standard",
+                   help="encoder quality: draft (small, fast) .. max (largest); default standard")
+    g.add_argument("--basename", help="output file name without extension")
+    g.add_argument("--gif-width", type=int, help="GIF width in pixels (default depends on --quality)")
+    t = p.add_argument_group("titles and text")
+    t.add_argument("--name", help="project name used in titles and file names (default: repo name)")
+    t.add_argument("--title", help="title drawn on the GIF/MP4/PNG (default 'Roads of <name>')")
+    t.add_argument("--subtitle", help="replaces the one-line explanation under the legend")
+    t.add_argument("--credit", help="small text in the bottom-right corner, e.g. a channel handle")
+    t.add_argument("--no-captions", action="store_true", help="hide the narration captions at the bottom")
+    t.add_argument("--no-legend", action="store_true", help="hide the legend and explanation line")
+    t.add_argument("--text-scale", type=float, help="make all text bigger or smaller (the shorts preset uses 1.45)")
+    v = p.add_argument_group("framing")
+    v.add_argument("--fit", choices=["contain", "fill"], default="contain", help="contain: whole map visible (default); fill: crop to fill the frame")
+    v.add_argument("--zoom", type=float, default=1.0, help="zoom in (>1) or out (<1) from the fitted view")
+    v.add_argument("--focus", metavar="PATH", help="frame one folder or file prefix, e.g. lib/ or src/network")
+    m_ = p.add_argument_group("timing")
+    m_.add_argument("--duration", type=float, help="seconds of animation (the shorts preset uses 45)")
+    m_.add_argument("--fps", type=float, help="distinct frames per second of the source; ignored when --duration is given")
+    m_.add_argument("--hold", type=float, default=2.0, help="seconds to linger on the final frame (default 2; rounded up to whole source frames)")
+    m_.add_argument("--frames-per-snapshot", type=int, default=4, help="rendered frames between snapshots (default 4; more = smoother, slower)")
+    m_.add_argument("--no-smooth", action="store_true", help="MP4: do not dissolve between rendered frames")
     p.add_argument("--jobs", type=int, default=max(1, min(4, (os.cpu_count() or 2) // 2)), help="parallel workers")
     p.add_argument("--max-files", type=int, default=4000, help="most files drawn; files with the most functions are kept (default 4000)")
 

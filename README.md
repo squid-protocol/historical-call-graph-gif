@@ -32,6 +32,43 @@ historical-call-graph-gif serve roads-out                               # http:/
 (your working tree, branches and index are never touched), scans each with GalaxyScope, and writes
 `roads-out/<name>.gif`, `.mp4` and `.html`.
 
+### Video, shape and size (YouTube Shorts, Reels, TikTok)
+
+```bash
+# a phone video: 1080x1920, 9:16, 45 seconds, H.264 MP4, titles kept clear of the app's own buttons
+historical-call-graph-gif make repo --preset shorts --title "10 years of my repo"
+
+historical-call-graph-gif make repo --preset landscape --quality high      # 1920x1080
+historical-call-graph-gif make repo --size 1280x720 --formats gif          # any size you like
+```
+
+| `--preset` | size | default output | notes |
+|---|---|---|---|
+| `default` | 1000x1280 | gif, mp4, html | the original shape |
+| `landscape` (`youtube`, `wide`) | 1920x1080 | gif, mp4, html | 16:9 |
+| `square` | 1080x1080 | gif, mp4, html | |
+| `portrait` (`instagram`) | 1080x1350 | gif, mp4, html | 4:5 |
+| `shorts` (`phone`, `vertical`, `reels`, `tiktok`, `story`) | 1080x1920 | mp4 | 9:16, 45 s, 1.45x text, safe margins |
+
+Outputs get the preset as a suffix (`repo-shorts.mp4`), so one run directory can hold several shapes.
+The `shorts` preset keeps the title inside the top safe area and the captions above the bottom fifth of the screen,
+where YouTube, Instagram and TikTok draw their own buttons and description. YouTube accepts vertical videos up to
+3 minutes as Shorts. Upload the MP4 as is.
+
+**Titles and text:** `--title`, `--subtitle` (replaces the one-line explanation), `--credit "@handle"` (bottom
+right), `--no-captions`, `--no-legend`, `--text-scale 1.2`.
+
+**Framing:** `--fit contain|fill` (whole map, or crop to fill the frame), `--zoom 1.5`, and
+`--focus lib/` to frame one folder or file prefix, which is a good way to make a second video about one subsystem.
+
+**Timing:** `--duration 30` (seconds of animation), `--hold 3` (seconds on the final frame),
+`--frames-per-snapshot 8` (smoother and slower to render). MP4s dissolve between the rendered frames up to 30 fps;
+`--no-smooth` keeps them as hard steps.
+
+**Quality:** `--quality draft|standard|high|max` sets the H.264 quality and GIF palette and width; `--gif-width 600`
+overrides the GIF width. `--formats` also accepts `png` (a still of the final state, handy as a thumbnail) and
+`frames` (every frame as a PNG).
+
 ### How many snapshots, and when
 
 By default the count is **automatic**: about one snapshot per quarter for the first six years of history and
